@@ -4,7 +4,7 @@ import mongoose from 'mongoose';
 import Transaction from '../models/Transaction';
 import Category from '../models/Category';
 import { AuthenticatedRequest, CreateTransactionDTO, UpdateTransactionDTO, TransactionType, TransactionFilters } from '../types';
-import { auth } from '../middleware/auth';
+import { auth } from '../middlewares/auth';
 
 const router = express.Router();
 

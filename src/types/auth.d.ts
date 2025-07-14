@@ -1,23 +1,18 @@
 // src/types/auth.d.ts
 import { Request } from 'express';
+import { IUser } from './index';
 
-// Isto é necessário para que o TypeScript reconheça a propriedade customizada
+// Extensão global do Express Request
 declare global {
   namespace Express {
     export interface Request {
-      user?: {
-        id: number;
-        email: string;
-      };
+      user?: IUser;
     }
   }
 }
 
-export interface AuthRequest extends Request {
-  user: {
-    id: number;  
-    email: string;
-  };
+export interface AuthenticatedRequest extends Request {
+  user?: IUser;
 }
 
 export { Request };

@@ -3,7 +3,7 @@ import { body, validationResult, query } from 'express-validator';
 import Category from '../models/Category';
 import Transaction from '../models/Transaction';
 import { AuthenticatedRequest, CreateCategoryDTO, UpdateCategoryDTO, CategoryType } from '../types';
-import { auth } from '../middleware/auth';
+import { auth } from '../middlewares/auth';
 
 const router = express.Router();
 

@@ -4,11 +4,8 @@ import { body, validationResult } from 'express-validator';
 import User from '../models/User';
 import Category from '../models/Category';
 import { AuthenticatedRequest, CreateUserDTO, LoginDTO, DEFAULT_CATEGORIES } from '../types';
-import { RequestHandler } from 'express'; // Adicione no topo do arquivo
 import { auth } from '../middlewares/auth';
 
-// 1. Primeiro crie um type alias para o middleware auth
-const authMiddleware: RequestHandler = auth;
 const router = express.Router();
 
 // Gerar JWT Token
@@ -180,53 +177,47 @@ router.post('/login', loginValidation, async (req: Request, res: Response): Prom
   }
 });
 
-router.get(
-  '/me', 
-  authMiddleware, // Usando o middleware tipado corretamente
-  async (req: AuthenticatedRequest, res: Response): Promise<Response | void> => {
-    try {
-      if (!req.user) {
-        return res.status(401).json({
-          success: false,
-          message: 'Usuário não autenticado'
-        });
-      }
-
-      return res.json({
-        success: true,
-        user: {
-          id: req.user._id,
-          name: req.user.name,
-          email: req.user.email
-        }
-      });
-    } catch (error: any) {
-      console.error('Erro ao obter dados do usuário:', error);
-      return res.status(500).json({
+// Obter dados do usuário autenticado
+router.get('/me', auth, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    if (!req.user) {
+      res.status(401).json({
         success: false,
-        message: 'Erro interno do servidor'
+        message: 'Usuário não autenticado'
       });
+      return;
     }
+
+    res.json({
+      success: true,
+      user: {
+        id: req.user._id,
+        name: req.user.name,
+        email: req.user.email
+      }
+    });
+  } catch (error: any) {
+    console.error('Erro ao obter dados do usuário:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro interno do servidor'
+    });
   }
-);
+});
 
 // Atualizar perfil do usuário
-router.put(
-  '/profile', 
-  auth as express.RequestHandler, // Corrigindo a tipagem aqui
-  [
-    body('name')
-      .optional()
-      .trim()
-      .isLength({ min: 2, max: 50 })
-      .withMessage('Nome deve ter entre 2 e 50 caracteres'),
-    body('email')
-      .optional()
-      .isEmail()
-      .normalizeEmail()
-      .withMessage('Email inválido')
-  ], 
-  async (req: AuthenticatedRequest, res: Response): Promise<Response> => {
+router.put('/profile', auth, [
+  body('name')
+    .optional()
+    .trim()
+    .isLength({ min: 2, max: 50 })
+    .withMessage('Nome deve ter entre 2 e 50 caracteres'),
+  body('email')
+    .optional()
+    .isEmail()
+    .normalizeEmail()
+    .withMessage('Email inválido')
+], async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
