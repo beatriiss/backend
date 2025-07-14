@@ -1,5 +1,5 @@
 import express, { Response } from 'express';
-import { body, validationResult, query } from 'express-validator';
+import { body, validationResult, query, param } from 'express-validator';
 import mongoose from 'mongoose';
 import Transaction from '../models/Transaction';
 import Category from '../models/Category';
@@ -658,6 +658,310 @@ router.get('/analytics/by-month', auth, [
     });
   } catch (error: any) {
     console.error('Erro ao obter análise mensal:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro interno do servidor'
+    });
+  }
+});
+
+// Adicionar no arquivo src/routes/transaction.ts
+
+// Obter gastos de um dia específico
+router.get('/daily/:date', auth, [
+  // Validação da data no formato YYYY-MM-DD
+  param('date')
+    .matches(/^\d{4}-\d{2}-\d{2}$/)
+    .withMessage('Data deve estar no formato YYYY-MM-DD (ex: 2024-12-14)')
+    .custom((value) => {
+      const date = new Date(value);
+      if (isNaN(date.getTime())) {
+        throw new Error('Data inválida');
+      }
+      // Não permitir datas muito futuras
+      const oneYearFromNow = new Date();
+      oneYearFromNow.setFullYear(oneYearFromNow.getFullYear() + 1);
+      if (date > oneYearFromNow) {
+        throw new Error('Data não pode ser mais de 1 ano no futuro');
+      }
+      return true;
+    })
+], async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      res.status(400).json({
+        success: false,
+        message: 'Data inválida',
+        errors: errors.array()
+      });
+      return;
+    }
+
+    if (!req.user) {
+      res.status(401).json({
+        success: false,
+        message: 'Usuário não autenticado'
+      });
+      return;
+    }
+
+    const dateParam = req.params.date; // Ex: "2024-12-14"
+    
+    // Criar início e fim do dia
+    const startOfDay = new Date(dateParam + 'T00:00:00.000Z');
+    const endOfDay = new Date(dateParam + 'T23:59:59.999Z');
+
+    // Buscar todas as transações do dia
+    const transactions = await Transaction.find({
+      user: req.user._id,
+      date: {
+        $gte: startOfDay,
+        $lte: endOfDay
+      }
+    })
+    .populate('category')
+    .sort({ date: -1, createdAt: -1 })
+    .lean();
+
+    // Calcular resumo do dia
+    const dailySummary = {
+      date: dateParam,
+      income: {
+        total: 0,
+        count: 0,
+        transactions: transactions.filter(t => t.type === 'income')
+      },
+      expense: {
+        total: 0,
+        count: 0,
+        transactions: transactions.filter(t => t.type === 'expense')
+      },
+      balance: 0,
+      totalTransactions: transactions.length
+    };
+
+    // Calcular totais
+    transactions.forEach(transaction => {
+      if (transaction.type === 'income') {
+        dailySummary.income.total += transaction.amount;
+        dailySummary.income.count++;
+      } else {
+        dailySummary.expense.total += transaction.amount;
+        dailySummary.expense.count++;
+      }
+    });
+
+    // Calcular balance
+    dailySummary.balance = dailySummary.income.total - dailySummary.expense.total;
+
+    // Arredondar valores
+    dailySummary.income.total = Math.round(dailySummary.income.total * 100) / 100;
+    dailySummary.expense.total = Math.round(dailySummary.expense.total * 100) / 100;
+    dailySummary.balance = Math.round(dailySummary.balance * 100) / 100;
+
+    // Análise por categoria do dia
+    const categoryAnalysis = await Transaction.aggregate([
+      {
+        $match: {
+          user: req.user._id,
+          date: {
+            $gte: startOfDay,
+            $lte: endOfDay
+          }
+        }
+      },
+      {
+        $group: {
+          _id: {
+            category: '$category',
+            type: '$type'
+          },
+          totalAmount: { $sum: '$amount' },
+          count: { $sum: 1 }
+        }
+      },
+      {
+        $lookup: {
+          from: 'categories',
+          localField: '_id.category',
+          foreignField: '_id',
+          as: 'category'
+        }
+      },
+      { $unwind: '$category' },
+      {
+        $project: {
+          type: '$_id.type',
+          totalAmount: { $round: ['$totalAmount', 2] },
+          count: 1,
+          category: {
+            _id: '$category._id',
+            name: '$category.name',
+            icon: '$category.icon',
+            color: '$category.color'
+          }
+        }
+      },
+      { $sort: { totalAmount: -1 } }
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        summary: dailySummary,
+        transactions,
+        categoryBreakdown: categoryAnalysis,
+        meta: {
+          requestedDate: dateParam,
+          dayOfWeek: startOfDay.toLocaleDateString('pt-BR', { weekday: 'long' }),
+          isToday: dateParam === new Date().toISOString().split('T')[0],
+          isWeekend: startOfDay.getDay() === 0 || startOfDay.getDay() === 6
+        }
+      }
+    });
+  } catch (error: any) {
+    console.error('Erro ao obter gastos do dia:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro interno do servidor'
+    });
+  }
+});
+
+// Rota alternativa mais simples (apenas resumo)
+router.get('/daily/:date/summary', auth, [
+  param('date')
+    .matches(/^\d{4}-\d{2}-\d{2}$/)
+    .withMessage('Data deve estar no formato YYYY-MM-DD')
+], async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      res.status(400).json({
+        success: false,
+        message: 'Data inválida',
+        errors: errors.array()
+      });
+      return;
+    }
+
+    if (!req.user) {
+      res.status(401).json({
+        success: false,
+        message: 'Usuário não autenticado'
+      });
+      return;
+    }
+
+    const dateParam = req.params.date;
+    const startOfDay = new Date(dateParam + 'T00:00:00.000Z');
+    const endOfDay = new Date(dateParam + 'T23:59:59.999Z');
+
+    // Usar o método getFinancialSummary que já existe
+    const summary = await (Transaction as any).getFinancialSummary(
+      req.user._id.toString(),
+      startOfDay,
+      endOfDay
+    );
+
+    res.json({
+      success: true,
+      date: dateParam,
+      summary
+    });
+  } catch (error: any) {
+    console.error('Erro ao obter resumo do dia:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro interno do servidor'
+    });
+  }
+});
+
+// Rota para comparar dias
+router.get('/daily/compare/:date1/:date2', auth, [
+  param('date1')
+    .matches(/^\d{4}-\d{2}-\d{2}$/)
+    .withMessage('Primeira data deve estar no formato YYYY-MM-DD'),
+  param('date2')
+    .matches(/^\d{4}-\d{2}-\d{2}$/)
+    .withMessage('Segunda data deve estar no formato YYYY-MM-DD')
+], async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      res.status(400).json({
+        success: false,
+        message: 'Datas inválidas',
+        errors: errors.array()
+      });
+      return;
+    }
+
+    if (!req.user) {
+      res.status(401).json({
+        success: false,
+        message: 'Usuário não autenticado'
+      });
+      return;
+    }
+
+    const { date1, date2 } = req.params;
+
+    // Resumo do primeiro dia
+    const startOfDay1 = new Date(date1 + 'T00:00:00.000Z');
+    const endOfDay1 = new Date(date1 + 'T23:59:59.999Z');
+    const summary1 = await (Transaction as any).getFinancialSummary(
+      req.user._id.toString(),
+      startOfDay1,
+      endOfDay1
+    );
+
+    // Resumo do segundo dia
+    const startOfDay2 = new Date(date2 + 'T00:00:00.000Z');
+    const endOfDay2 = new Date(date2 + 'T23:59:59.999Z');
+    const summary2 = await (Transaction as any).getFinancialSummary(
+      req.user._id.toString(),
+      startOfDay2,
+      endOfDay2
+    );
+
+    // Calcular diferenças
+    const comparison = {
+      income: {
+        difference: summary2.income.total - summary1.income.total,
+        percentChange: summary1.income.total > 0 
+          ? ((summary2.income.total - summary1.income.total) / summary1.income.total) * 100 
+          : 0
+      },
+      expense: {
+        difference: summary2.expense.total - summary1.expense.total,
+        percentChange: summary1.expense.total > 0 
+          ? ((summary2.expense.total - summary1.expense.total) / summary1.expense.total) * 100 
+          : 0
+      },
+      balance: {
+        difference: summary2.balance - summary1.balance
+      }
+    };
+
+    res.json({
+      success: true,
+      comparison: {
+        date1: {
+          date: date1,
+          summary: summary1
+        },
+        date2: {
+          date: date2,
+          summary: summary2
+        },
+        differences: comparison
+      }
+    });
+  } catch (error: any) {
+    console.error('Erro ao comparar dias:', error);
     res.status(500).json({
       success: false,
       message: 'Erro interno do servidor'
