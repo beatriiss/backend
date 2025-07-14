@@ -15,12 +15,13 @@ const generateToken = (userId: string): string => {
     throw new Error('JWT_SECRET não configurado');
   }
   
+  // Solução 1: Casting explícito
   return jwt.sign(
     { userId }, 
-    jwtSecret, 
+    jwtSecret as string, 
     { 
       expiresIn: process.env.JWT_EXPIRES_IN || '7d' 
-    }
+    } as jwt.SignOptions
   );
 };
 
