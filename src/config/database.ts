@@ -1,28 +1,60 @@
-// src/config/database.ts
-import { Sequelize } from 'sequelize';
-import dotenv from 'dotenv';
+import mongoose from 'mongoose';
 
-dotenv.config();
+// Importar models
+import User from '../models/User.js';
+import Transaction from '../models/Transaction.js';
+import CreditCard from '../models/CreditCard.js';
+import CreditCardPurchase from '../models/CreditCardPurchase.js';
+import CreditCardInstallment from '../models/CreditCardInstallment.js';
+import Session from '../models/Session.js';
+import InvestmentSummary from '../models/InvestimentSummary.js';
+import InvestmentTransaction from '../models/InvestimentTransaction.js';
 
-export const sequelize = new Sequelize(
-  process.env.DB_NAME!,
-  process.env.DB_USER!,
-  process.env.DB_PASSWORD!,
-  {
-    host: process.env.DB_HOST,
-    port: Number(process.env.DB_PORT),
-    dialect: 'mysql',
-    logging: console.log,
-    timezone: '-03:00'
-  }
-);
-
-export async function connectDB() {
+export async function connectDatabase() {
   try {
-    await sequelize.authenticate();
-    console.log('Conexão com o banco de dados estabelecida com sucesso.');
+    await mongoose.connect(process.env.MONGODB_URI as string);
+    console.log('✅ MongoDB conectado!');
+    
+    // Tenta sincronizar índices, mas não quebra se der erro
+    await syncIndexes();
+    
   } catch (error) {
-    console.error('Erro ao conectar com o banco de dados:', error);
+    console.error('❌ Erro ao conectar MongoDB:', error);
     process.exit(1);
+  }
+}
+
+async function syncIndexes() {
+  try {
+    console.log('🔄 Sincronizando índices...');
+    
+    const models = [
+      { name: 'User', model: User },
+      { name: 'Transaction', model: Transaction },
+      { name: 'CreditCard', model: CreditCard },
+      { name: 'CreditCardPurchase', model: CreditCardPurchase },
+      { name: 'CreditCardInstallment', model: CreditCardInstallment },
+      { name: 'InvestmentSummary', model: InvestmentSummary },
+      { name: 'InvestmentTransaction', model: InvestmentTransaction },
+      { name: 'Session', model: Session },
+    ];
+    
+    for (const { name, model } of models) {
+      try {
+        await model.syncIndexes();
+        console.log(`  ✓ ${name}`);
+      } catch (error: any) {
+        // Ignora erro de índice duplicado (código 85)
+        if (error.code === 85) {
+          console.log(`  ⚠ ${name} (índice já existe)`);
+        } else {
+          console.warn(`  ⚠ ${name}:`, error.message);
+        }
+      }
+    }
+    
+    console.log('✅ Sincronização concluída!');
+  } catch (error) {
+    console.warn('⚠️ Aviso na sincronização de índices');
   }
 }
