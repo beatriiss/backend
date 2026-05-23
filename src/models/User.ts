@@ -4,6 +4,8 @@ export interface IUser extends Document {
   phoneNumber: string;
   name?: string;
   status: 'pending_name' | 'active';
+  customCategories: string[];
+  categoryMappings: Record<string, string>;
   createdAt: Date;
 }
 
@@ -22,6 +24,15 @@ const userSchema = new Schema<IUser>({
     type: String,
     enum: ['pending_name', 'active'],
     default: 'pending_name'
+  },
+  customCategories: {
+    type: [String],
+    default: []
+  },
+  categoryMappings: {
+    type: Map,
+    of: String,
+    default: {}
   },
   createdAt: {
     type: Date,

@@ -17,8 +17,19 @@ import {
 } from '../controllers/transactionCOntroller.js';
 import { handleNameRegistration } from '../controllers/userController.js';
 import {
+  handleCategoryChoice,
+  handleCategoryCreation,
+  handleCategoryChange,
+  handleChangeCategoryCommand,
+  handleListCategoriesCommand,
+  handleListMappingsCommand,
+  handleDeleteMappingCommand,
+  askForCategory
+} from '../controllers/categoryController.js';
+import {
   getOrCreateSession,
-  savePendingTransaction
+  savePendingTransaction,
+  getSession
 } from './sessionService.js';
 
 let sock: WASocket | null = null;
@@ -106,7 +117,9 @@ async function handleIncomingMessage(msg: proto.IWebMessageInfo) {
 
       user = await User.create({
         phoneNumber,
-        status: 'pending_name'
+        status: 'pending_name',
+        customCategories: [],
+        categoryMappings: {}
       });
 
       // Cria sessão
@@ -149,8 +162,30 @@ async function handleIncomingMessage(msg: proto.IWebMessageInfo) {
       return;
     }
 
+    // Verifica se está aguardando escolha de categoria
+    const session = await getSession(phoneNumber);
+    
+    if (session?.status === 'pending_category') {
+      console.log('🏷️ Processando escolha de categoria...');
+      await handleCategoryChoice(from, user, text);
+      return;
+    }
+
+    if (session?.status === 'pending_category_creation') {
+      console.log('✏️ Processando criação de categoria...');
+      await handleCategoryCreation(from, user, text);
+      return;
+    }
+
+    if (session?.status === 'pending_category_change') {
+      console.log('🔄 Processando alteração de categoria...');
+      await handleCategoryChange(from, user, text);
+      return;
+    }
+
     // 3. USUÁRIO ATIVO - Fluxo normal
-    const parsed = parseMessage(text);
+    const userMappings = user.categoryMappings as unknown as Record<string, string>;
+    const parsed = parseMessage(text, userMappings);
 
     if (parsed.type === 'command') {
       const { command } = parsed.data;
@@ -161,13 +196,48 @@ async function handleIncomingMessage(msg: proto.IWebMessageInfo) {
         await handleTodayCommand(from, user);
       } else if (command === 'ajuda' || command === 'help') {
         await handleHelpCommand(from);
+      } else if (command === 'categorias') {
+        await handleListCategoriesCommand(from, user);
+      } else if (command === 'mapear') {
+        await handleListMappingsCommand(from, user);
+      } else if (command === 'mudar') {
+        await handleChangeCategoryCommand(from, user);
+      } else if (command.startsWith('apagar ')) {
+        const keyword = command.substring(7).trim();
+        await handleDeleteMappingCommand(from, user, keyword);
       } else {
         await sendMessage(from, '❓ Comando não reconhecido. Use /ajuda');
       }
     } else if (parsed.type === 'transaction') {
-      await handleTransaction(from, user, parsed);
+      // Verifica se precisa escolher categoria
+      if (parsed.data.needsCategory) {
+        console.log('❓ Categoria não encontrada - perguntando ao usuário...');
+        await askForCategory(from, phoneNumber, {
+          value: parsed.data.value,
+          description: parsed.data.description,
+          keyword: parsed.data.keyword,
+          originalMessage: text
+        });
+      } else {
+        // Categoria já foi encontrada (categorização automática)
+        await handleTransaction(from, user, parsed, true);
+      }
     } else {
-      await sendMessage(from, '❓ Não entendi. Use /ajuda pra ver os comandos.');
+      // Mensagens casuais
+      const casual = ['oi', 'olá', 'ola', 'hey', 'hi', 'hello', 'bom dia', 'boa tarde', 'boa noite', 'ei','fala ai', 'fala tu'];
+      if (casual.includes(text.toLowerCase())) {
+        await sendMessage(
+          from,
+          `Oi${user.name ? ', ' + user.name : ''}! 👋\n\n` +
+          `Como posso te ajudar?\n\n` +
+          `💰 Registrar gasto: "35 almoço"\n` +
+          `📊 Ver gastos de hoje: /hoje\n` +
+          `📋 Últimos gastos: /lista\n` +
+          `ℹ️ Ajuda completa: /ajuda`
+        );
+      } else {
+        await sendMessage(from, '❓ Não entendi. Use /ajuda pra ver os comandos.');
+      }
     }
   } catch (error) {
     console.error('❌ Erro ao processar mensagem:', error);

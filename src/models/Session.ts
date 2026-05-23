@@ -4,21 +4,23 @@ interface PendingTransaction {
   value: number;
   description: string;
   category?: string;
+  keyword?: string;
   date?: Date;
   originalMessage: string;
 }
 
 interface SessionContext {
   pendingTransaction?: PendingTransaction;
-  awaitingInput?: 'name' | 'category' | 'date_confirmation';
+  awaitingInput?: 'name' | 'category_choice' | 'category_creation' | 'category_change';
   categoryOptions?: string[];
-  dateToConfirm?: Date;
+  newCategoryKeyword?: string;
+  lastTransactionId?: mongoose.Types.ObjectId;
 }
 
 export interface ISession extends Document {
   phoneNumber: string;
   userId: mongoose.Types.ObjectId;
-  status: 'pending_name' | 'pending_category' | 'pending_date_confirmation' | 'active';
+  status: 'pending_name' | 'pending_category' | 'pending_category_creation' | 'pending_category_change' | 'active';
   context: SessionContext;
   expiresAt: Date;
   createdAt: Date;
@@ -38,7 +40,7 @@ const sessionSchema = new Schema<ISession>({
   },
   status: {
     type: String,
-    enum: ['pending_name', 'pending_category', 'pending_date_confirmation', 'active'],
+    enum: ['pending_name', 'pending_category', 'pending_category_creation', 'pending_category_change', 'active'],
     default: 'active'
   },
   context: {
@@ -46,15 +48,17 @@ const sessionSchema = new Schema<ISession>({
       value: Number,
       description: String,
       category: String,
+      keyword: String,
       date: Date,
       originalMessage: String
     },
     awaitingInput: {
       type: String,
-      enum: ['name', 'category', 'date_confirmation']
+      enum: ['name', 'category_choice', 'category_creation', 'category_change']
     },
     categoryOptions: [String],
-    dateToConfirm: Date
+    newCategoryKeyword: String,
+    lastTransactionId: Schema.Types.ObjectId
   },
   expiresAt: {
     type: Date,

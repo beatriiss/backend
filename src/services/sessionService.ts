@@ -70,6 +70,7 @@ export async function savePendingTransaction(
     value: number;
     description: string;
     category?: string;
+    keyword?: string;
     date?: Date;
     originalMessage: string;
   }
@@ -87,4 +88,19 @@ export async function savePendingTransaction(
 
 export async function getSession(phoneNumber: string): Promise<ISession | null> {
   return await Session.findOne({ phoneNumber });
+}
+
+export async function updateSessionContext(
+  phoneNumber: string,
+  context: Partial<ISession['context']>
+): Promise<void> {
+  await Session.updateOne(
+    { phoneNumber },
+    {
+      $set: {
+        'context': context,
+        expiresAt: new Date(Date.now() + SESSION_DURATION_MS)
+      }
+    }
+  );
 }
