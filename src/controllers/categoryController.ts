@@ -10,21 +10,17 @@ import {
   normalizeText
 } from '../services/categoryMapper.js';
 import {
-  getPendingTransaction,
   updateSessionStatus,
   clearSession,
-  updateSessionContext,
   getSession
 } from '../services/sessionService.js';
 import { handleTransaction } from './transactionCOntroller.js';
-import { parseMessage } from '../services/messageParser.js';
 
 export async function askForCategory(
   from: string,
   phoneNumber: string,
   transaction: any
 ) {
-  // Salva a transação pendente
   await updateSessionStatus(phoneNumber, 'pending_category', {
     pendingTransaction: transaction,
     awaitingInput: 'category_choice'
@@ -50,7 +46,6 @@ export async function handleCategoryChoice(
 
   const choiceNum = parseInt(choice);
 
-  // Validação
   if (isNaN(choiceNum) || choiceNum < 1 || choiceNum > DEFAULT_CATEGORIES.length) {
     await sendMessage(
       from,
@@ -59,7 +54,6 @@ export async function handleCategoryChoice(
     return;
   }
 
-  // Opção "criar nova categoria"
   if (choiceNum === DEFAULT_CATEGORIES.length) {
     await updateSessionStatus(phoneNumber, 'pending_category_creation', {
       pendingTransaction: session.context.pendingTransaction,
@@ -69,13 +63,12 @@ export async function handleCategoryChoice(
 
     await sendMessage(
       from,
-      '✏️ Digite o nome da nova categoria:\n\n' +
+      '🖉 Digite o nome da nova categoria:\n\n' +
       '(ex: pet, games, beleza, etc)'
     );
     return;
   }
 
-  // Escolheu uma categoria existente
   const category = getCategoryByNumber(choiceNum);
 
   if (!category) {
@@ -83,36 +76,31 @@ export async function handleCategoryChoice(
     return;
   }
 
-  // Salva o mapeamento no usuário (NORMALIZADO)
   const keyword = session.context.pendingTransaction.keyword;
   if (keyword) {
     const normalizedKeyword = normalizeText(keyword);
     const mappings = user.categoryMappings || {};
     mappings[normalizedKeyword] = category;
-    
     user.categoryMappings = mappings;
     user.markModified('categoryMappings');
     await user.save();
-    
-    console.log(`💾 Mapeamento salvo: "${normalizedKeyword}" → ${category}`);
   }
 
-  // Cria a transação
   const transactionData = {
     type: 'transaction',
     data: {
       value: session.context.pendingTransaction.value,
       description: session.context.pendingTransaction.description,
-      category
+      category,
+      date: session.context.pendingTransaction.date
+        ? new Date(session.context.pendingTransaction.date)
+        : new Date()
     }
   };
 
   await handleTransaction(from, user, transactionData, false);
-
-  // Limpa sessão
   await clearSession(phoneNumber);
 
-  // Mensagem extra
   await sendMessage(
     from,
     `💡 Salvei: "${keyword}" = ${getCategoryEmoji(category)} ${category}\n` +
@@ -134,111 +122,96 @@ export async function handleCategoryCreation(
     return;
   }
 
-  // Valida nome da categoria
   const cleanName = categoryName.toLowerCase().trim();
 
   if (cleanName.length < 2) {
-    await sendMessage(
-      from,
-      '❌ Nome muito curto. Digite um nome com pelo menos 2 letras.'
-    );
+    await sendMessage(from, '❌ Nome muito curto. Digite um nome com pelo menos 2 letras.');
     return;
   }
 
   if (cleanName.length > 20) {
-    await sendMessage(
-      from,
-      '❌ Nome muito longo. Use no máximo 20 caracteres.'
-    );
+    await sendMessage(from, '❌ Nome muito longo. Use no máximo 20 caracteres.');
     return;
   }
 
-  // Adiciona à lista de categorias customizadas
   if (!user.customCategories.includes(cleanName)) {
     user.customCategories.push(cleanName);
   }
 
-  // Salva o mapeamento (NORMALIZADO)
   const keyword = session.context.pendingTransaction.keyword || session.context.newCategoryKeyword;
   if (keyword) {
     const normalizedKeyword = normalizeText(keyword);
     const mappings = user.categoryMappings || {};
     mappings[normalizedKeyword] = cleanName;
-    
     user.categoryMappings = mappings;
     user.markModified('categoryMappings');
-    
-    console.log(`💾 Mapeamento salvo: "${normalizedKeyword}" → ${cleanName}`);
   }
 
   await user.save();
 
-  // Cria a transação
+  // ── Se veio do /mudar → só atualiza a transação existente ─────────────────
+  if (session.context.lastTransactionId) {
+    const transaction = await Transaction.findById(session.context.lastTransactionId);
+
+    if (transaction) {
+      const oldCategory = transaction.category;
+      transaction.category = cleanName;
+      await transaction.save();
+
+      // Se editBoth → ainda precisa pedir data
+      if (session.context.editBoth) {
+        await updateSessionStatus(phoneNumber, 'pending_date_edit', {
+          lastTransactionId: session.context.lastTransactionId,
+          pendingTransaction: session.context.pendingTransaction,
+          awaitingInput: 'date_edit',
+          editBoth: false
+        });
+
+        await sendMessage(
+          from,
+          `🗸 Categoria alterada para ${getCategoryEmoji(cleanName)} ${cleanName}!\n\n` +
+          `📅 *Agora, qual a nova data?*\n\n` +
+          `Exemplos:\n` +
+          `• ontem\n` +
+          `• dia 15\n` +
+          `• 20/05\n` +
+          `• sexta`
+        );
+        return;
+      }
+
+      await clearSession(phoneNumber);
+      await sendMessage(
+        from,
+        `🗸 Categoria alterada!\n\n` +
+        `De: ${oldCategory}\n` +
+        `Para: ${getCategoryEmoji(cleanName)} ${cleanName}\n\n` +
+        `💡 Mapeamento de "${keyword}" atualizado!`
+      );
+      return;
+    }
+  }
+
+  // ── Fluxo normal → cria transação nova ────────────────────────────────────
   const transactionData = {
     type: 'transaction',
     data: {
       value: session.context.pendingTransaction.value,
       description: session.context.pendingTransaction.description,
-      category: cleanName
+      category: cleanName,
+      date: session.context.pendingTransaction.date
+        ? new Date(session.context.pendingTransaction.date)
+        : new Date()
     }
   };
 
   await handleTransaction(from, user, transactionData, false);
-
-  // Limpa sessão
   await clearSession(phoneNumber);
 
-  // Mensagem de confirmação
   await sendMessage(
     from,
-    `✨ Categoria "${cleanName}" criada com sucesso!\n\n` +
+    `🗸 Categoria "${cleanName}" criada!\n\n` +
     `💡 Salvei: "${keyword}" = ${cleanName}`
-  );
-}
-
-export async function handleChangeCategoryCommand(from: string, user: IUser) {
-  const phoneNumber = from.split('@')[0];
-  const session = await getSession(phoneNumber);
-
-  // Verifica se tem transação recente na sessão
-  if (!session?.context?.lastTransactionId) {
-    await sendMessage(
-      from,
-      '❌ Nenhum gasto recente para alterar.\n\n' +
-      'Use /mudar logo após registrar um gasto.'
-    );
-    return;
-  }
-
-  // Busca a transação
-  const transaction = await Transaction.findById(session.context.lastTransactionId);
-
-  if (!transaction) {
-    await sendMessage(from, '❌ Transação não encontrada.');
-    await clearSession(phoneNumber);
-    return;
-  }
-
-  // Salva a transação atual pra alterar
-  await updateSessionStatus(phoneNumber, 'pending_category_change', {
-    pendingTransaction: {
-      value: transaction.value,
-      description: transaction.description,
-      category: transaction.category,
-      keyword: transaction.description.split(' ')[0],
-      originalMessage: ''
-    },
-    lastTransactionId: transaction._id,
-    awaitingInput: 'category_change'
-  });
-
-  const message = formatCategoryOptions();
-  await sendMessage(
-    from,
-    `🔄 Alterar categoria de:\n` +
-    `📝 ${transaction.description}\n` +
-    `💰 R$ ${transaction.value.toFixed(2)}\n\n` +
-    message
   );
 }
 
@@ -258,7 +231,6 @@ export async function handleCategoryChange(
 
   const choiceNum = parseInt(choice);
 
-  // Validação
   if (isNaN(choiceNum) || choiceNum < 1 || choiceNum > DEFAULT_CATEGORIES.length) {
     await sendMessage(
       from,
@@ -267,24 +239,23 @@ export async function handleCategoryChange(
     return;
   }
 
-  // Opção "criar nova categoria"
   if (choiceNum === DEFAULT_CATEGORIES.length) {
     await updateSessionStatus(phoneNumber, 'pending_category_creation', {
       pendingTransaction: session.context.pendingTransaction,
       lastTransactionId: session.context.lastTransactionId,
       awaitingInput: 'category_creation',
-      newCategoryKeyword: session.context.pendingTransaction?.keyword
+      newCategoryKeyword: session.context.pendingTransaction?.keyword,
+      editBoth: session.context.editBoth
     });
 
     await sendMessage(
       from,
-      '✏️ Digite o nome da nova categoria:\n\n' +
+      '🖉 Digite o nome da nova categoria:\n\n' +
       '(ex: pet, games, beleza, etc)'
     );
     return;
   }
 
-  // Escolheu uma categoria existente
   const category = getCategoryByNumber(choiceNum);
 
   if (!category) {
@@ -292,7 +263,6 @@ export async function handleCategoryChange(
     return;
   }
 
-  // Atualiza a transação
   const transaction = await Transaction.findById(session.context.lastTransactionId);
 
   if (!transaction) {
@@ -305,36 +275,53 @@ export async function handleCategoryChange(
   transaction.category = category;
   await transaction.save();
 
-  // Atualiza o mapeamento do usuário
   const keyword = session.context.pendingTransaction?.keyword;
   if (keyword) {
     const normalizedKeyword = normalizeText(keyword);
     const mappings = user.categoryMappings || {};
     mappings[normalizedKeyword] = category;
-    
     user.categoryMappings = mappings;
     user.markModified('categoryMappings');
     await user.save();
-    
-    console.log(`💾 Mapeamento atualizado: "${normalizedKeyword}" → ${category}`);
   }
 
-  // Limpa sessão
+  const emoji = getCategoryEmoji(category);
+
+  if (session.context.editBoth) {
+    await updateSessionStatus(phoneNumber, 'pending_date_edit', {
+      lastTransactionId: session.context.lastTransactionId,
+      pendingTransaction: session.context.pendingTransaction,
+      awaitingInput: 'date_edit',
+      editBoth: false
+    });
+
+    await sendMessage(
+      from,
+      `🗸 Categoria alterada para ${emoji} ${category}!\n\n` +
+      `📅 *Agora, qual a nova data?*\n\n` +
+      `Exemplos:\n` +
+      `• ontem\n` +
+      `• dia 15\n` +
+      `• 20/05\n` +
+      `• sexta`
+    );
+    return;
+  }
+
   await clearSession(phoneNumber);
 
-  const emoji = getCategoryEmoji(category);
   await sendMessage(
     from,
-    `✅ Categoria alterada!\n\n` +
+    `🗸 Categoria alterada!\n\n` +
     `De: ${oldCategory}\n` +
     `Para: ${emoji} ${category}\n\n` +
-    `💡 Atualizei o mapeamento de "${keyword}" também!`
+    `💡 Mapeamento de "${keyword}" atualizado!`
   );
 }
 
 export async function handleListCategoriesCommand(from: string, user: IUser) {
-  let message = '📊 *Suas categorias:*\n\n';
-  
+  let message = '📈 *Suas categorias:*\n\n';
+
   message += '*PADRÃO:*\n';
   DEFAULT_CATEGORIES.forEach(cat => {
     if (cat.name !== 'outros') {
@@ -345,7 +332,7 @@ export async function handleListCategoriesCommand(from: string, user: IUser) {
   if (user.customCategories.length > 0) {
     message += '\n*PERSONALIZADAS:*\n';
     user.customCategories.forEach(cat => {
-      message += `✨ ${cat}\n`;
+      message += `✦ ${cat}\n`;
     });
   }
 
@@ -366,7 +353,7 @@ export async function handleListMappingsCommand(from: string, user: IUser) {
     return;
   }
 
-  let message = '🗺️ *Seus mapeamentos:*\n\n';
+  let message = '🗒️ *Seus mapeamentos:*\n\n';
 
   Object.entries(mappings).forEach(([keyword, category]) => {
     const emoji = getCategoryEmoji(category);
@@ -397,14 +384,14 @@ export async function handleDeleteMappingCommand(
 
   const category = mappings[normalizedKeyword];
   delete mappings[normalizedKeyword];
-  
+
   user.categoryMappings = mappings;
   user.markModified('categoryMappings');
   await user.save();
 
   await sendMessage(
     from,
-    `✅ Mapeamento removido!\n\n` +
+    `🗸 Mapeamento removido!\n\n` +
     `"${keyword}" não será mais categorizado como "${category}"`
   );
 }
