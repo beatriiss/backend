@@ -86,7 +86,7 @@ export async function startWhatsApp() {
   client = new Client({
     authStrategy: new LocalAuth({ dataPath: './auth_info' }),
     puppeteer: {
-      executablePath: 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+      executablePath: process.env.CHROMIUM_PATH || '/usr/bin/chromium-browser',
       headless: true,
       args: [
         '--no-sandbox',

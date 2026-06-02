@@ -8,7 +8,7 @@ import { sendMessage } from '../services/whatsapp.js';
 import { getCategoryEmoji, getIncomeCategoryEmoji, formatCategoryOptions } from '../services/categoryMapper.js';
 import { updateSessionStatus, getSession, clearSession } from '../services/sessionService.js';
 import { parseDate, formatDateLabel } from '../services/messageParser.js';
-import { handleEditarViagemStart } from './viagemController.js';
+import { handleEditarViagemStart } from '../controllers/ViagemController.js';
 
 export async function handleTransaction(
   from: string,

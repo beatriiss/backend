@@ -3,7 +3,7 @@ import Saving, { RateType } from '../models/Saving.js';
 import SavingEntry from '../models/SavingEntry.js';
 import { sendMessage } from '../services/whatsapp.js';
 import { updateSessionStatus, clearSession, getSession } from '../services/sessionService.js';
-import { calculateRendimento, formatTaxaLabel } from '../services/bcbService.js';
+import { calculateRendimento, formatTaxaLabel } from '../services/BcbService';
 import { normalizeText } from '../services/categoryMapper.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
