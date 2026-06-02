@@ -16,7 +16,13 @@ import {
   handleDateEdit,
   handleResumoCommand,
   handleMesCommand,
-  handleMesChoice
+  handleMesChoice,
+  handleSaldoCommand,
+  handleEditarCommand,
+  handleEditarChoice,
+  handleEditarFieldChoice,
+  handleEditarDescription,
+  handleEditarValueInput
 } from '../controllers/transactionCOntroller.js';
 import { handleNameRegistration } from '../controllers/userController.js';
 import {
@@ -53,6 +59,21 @@ import {
   handleDeleteEntryChoice,
   handleDeleteConfirm
 } from '../controllers/deleteController.js';
+import {
+  handleViagemCommand,
+  handleEncerrarCommand,
+  handleViagensListCommand,
+  handleEditarViagemChoice,
+  findOrCreateTrip
+} from '../controllers/viagemController.js';
+import {
+  handlePlanilhaCommand,
+  handlePlanilhaMesChoice
+} from '../controllers/planilhaController.js';
+import {
+  handleEvolucaoCommand,
+  handleEvolucaoChoice
+} from '../controllers/evolucaoController.js';
 import {
   getOrCreateSession,
   savePendingTransaction,
@@ -103,9 +124,7 @@ export async function startWhatsApp() {
   });
 
   client.on('message_create', async (msg: Message) => {
-    // Ignora mensagens enviadas pelo próprio bot
     if (msg.fromMe) return;
-    // Ignora mensagens que não sejam texto puro
     if (msg.type !== 'chat') return;
     await handleIncomingMessage(msg);
   });
@@ -188,7 +207,7 @@ async function handleIncomingMessage(msg: Message) {
       return;
     }
 
-    // ── Estados de edição ────────────────────────────────────────────────────
+    // ── Estados de edição rápida (/mudar) ────────────────────────────────────
     if (session?.status === 'pending_edit_choice') {
       await handleEditChoice(from, user, text);
       return;
@@ -198,9 +217,43 @@ async function handleIncomingMessage(msg: Message) {
       return;
     }
 
+    // ── Estados de edição completa (/editar) ─────────────────────────────────
+    if (session?.status === 'pending_editar_choice') {
+      await handleEditarChoice(from, user, text);
+      return;
+    }
+    if (session?.status === 'pending_editar_field') {
+      await handleEditarFieldChoice(from, user, text);
+      return;
+    }
+    if (session?.status === 'pending_editar_description') {
+      await handleEditarDescription(from, user, text);
+      return;
+    }
+    if (session?.status === 'pending_editar_value_input') {
+      await handleEditarValueInput(from, user, text);
+      return;
+    }
+    if (session?.status === 'pending_editar_viagem') {
+      await handleEditarViagemChoice(from, user, text);
+      return;
+    }
+
     // ── Estado de mês ────────────────────────────────────────────────────────
     if (session?.status === 'pending_mes_choice') {
       await handleMesChoice(from, user, text);
+      return;
+    }
+
+    // ── Estado de planilha ───────────────────────────────────────────────────
+    if (session?.status === 'pending_planilha_mes') {
+      await handlePlanilhaMesChoice(from, user, text);
+      return;
+    }
+
+    // ── Estado de evolução ───────────────────────────────────────────────────
+    if (session?.status === 'pending_evolucao_choice') {
+      await handleEvolucaoChoice(from, user, text);
       return;
     }
 
@@ -267,10 +320,16 @@ async function handleIncomingMessage(msg: Message) {
         await handleListCommand(from, user);
       } else if (command === 'hoje') {
         await handleTodayCommand(from, user);
+      } else if (command === 'saldo') {
+        await handleSaldoCommand(from, user);
       } else if (command === 'resumo') {
         await handleResumoCommand(from, user);
       } else if (command === 'mes') {
         await handleMesCommand(from, user);
+      } else if (command === 'planilha') {
+        await handlePlanilhaCommand(from, user);
+      } else if (command === 'evolucao' || command === 'comparação') {
+        await handleEvolucaoCommand(from, user);
       } else if (command === 'ajuda' || command === 'help') {
         await handleHelpCommand(from);
       } else if (command === 'categorias') {
@@ -279,12 +338,28 @@ async function handleIncomingMessage(msg: Message) {
         await handleListMappingsCommand(from, user);
       } else if (command === 'mudar') {
         await handleMudarCommand(from, user);
+      } else if (command === 'editar') {
+        await handleEditarCommand(from, user);
       } else if (command === 'entradas') {
         await handleIncomeListCommand(from, user);
       } else if (command === 'guardados') {
         await handleSavingsListCommand(from, user);
       } else if (command === 'deletar') {
         await handleDeleteCommand(from, user);
+      } else if (command === 'viagens') {
+        await handleViagensListCommand(from, user);
+      } else if (
+        command.startsWith('viagem ') ||
+        command.startsWith('role ') ||
+        command.startsWith('passeio ')
+      ) {
+        const nome = command.split(' ').slice(1).join(' ').trim();
+        await handleViagemCommand(from, user, nome);
+      } else if (command === 'viagem' || command === 'role' || command === 'passeio') {
+        await handleViagemCommand(from, user, '');
+      } else if (command.startsWith('encerrar ')) {
+        const nome = command.substring(9).trim();
+        await handleEncerrarCommand(from, user, nome);
       } else if (command.startsWith('rendimento ')) {
         const savingName = command.substring(11).trim();
         await handleRendimentoCommand(from, user, savingName);
@@ -305,6 +380,13 @@ async function handleIncomingMessage(msg: Message) {
       await handleWithdrawalMessage(from, user, parsed.data.value, parsed.data.savingName, parsed.data.date);
 
     } else if (parsed.type === 'transaction') {
+      if (parsed.data.tripTag) {
+        const { id, name, created } = await findOrCreateTrip(user._id, parsed.data.tripTag);
+        parsed.data.tripId = id;
+        parsed.data.tripName = name;
+        parsed.data.tripCreated = created;
+      }
+
       if (parsed.data.needsCategory) {
         await askForCategory(from, phoneNumber, {
           value: parsed.data.value,
@@ -327,9 +409,8 @@ async function handleIncomingMessage(msg: Message) {
           `💵 Gasto: "almoço 35"\n` +
           `💵 Entrada: "recebi 6000 salário"\n` +
           `🏦 Guardado: "guardei 500 caixinha viagem"\n` +
-          `💸 Retirada: "tirei 200 caixinha viagem"\n` +
-          `📅 Com data: "almoço 35 ontem"\n\n` +
-          `📈 Comandos: /hoje /resumo /mes /guardados /deletar /ajuda`
+          `✈️ Viagem: "almoço 35 #floripa"\n\n` +
+          `📈 Comandos: /hoje /saldo /resumo /planilha /evolucao /editar /viagens /ajuda`
         );
       } else {
         await sendMessage(from, '❓ Não entendi. Use /ajuda pra ver os comandos.');
@@ -355,9 +436,20 @@ export async function sendDocument(to: string, filePath: string, filename: strin
   const fileData = fs.readFileSync(absolutePath);
   const base64 = fileData.toString('base64');
 
-  const media = new MessageMedia('application/pdf', base64, filename);
+  const mimeTypes: Record<string, string> = {
+    '.pdf':  'application/pdf',
+    '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    '.xls':  'application/vnd.ms-excel',
+    '.csv':  'text/csv',
+    '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  };
+
+  const ext = path.extname(filename).toLowerCase();
+  const mimeType = mimeTypes[ext] || 'application/octet-stream';
+
+  const media = new MessageMedia(mimeType, base64, filename);
   await client.sendMessage(to, media);
-  console.log(`✅ Documento enviado: ${filename}`);
+  console.log(`✅ Documento enviado: ${filename} (${mimeType})`);
 }
 
 export function getWhatsAppInstance() {

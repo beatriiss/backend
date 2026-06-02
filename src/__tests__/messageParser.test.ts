@@ -121,6 +121,48 @@ describe('parseMessage — comandos', () => {
     expect(result.type).toBe('command');
     expect(result.data.command).toBe('apagar uber');
   });
+
+  test('/editar → command', () => {
+    const result = parseMessage('/editar');
+    expect(result.type).toBe('command');
+    expect(result.data.command).toBe('editar');
+  });
+
+  test('/saldo → command', () => {
+    const result = parseMessage('/saldo');
+    expect(result.type).toBe('command');
+    expect(result.data.command).toBe('saldo');
+  });
+
+  test('/viagem floripa → command', () => {
+    const result = parseMessage('/viagem floripa');
+    expect(result.type).toBe('command');
+    expect(result.data.command).toBe('viagem floripa');
+  });
+
+  test('/viagens → command', () => {
+    const result = parseMessage('/viagens');
+    expect(result.type).toBe('command');
+    expect(result.data.command).toBe('viagens');
+  });
+
+  test('/encerrar floripa → command', () => {
+    const result = parseMessage('/encerrar floripa');
+    expect(result.type).toBe('command');
+    expect(result.data.command).toBe('encerrar floripa');
+  });
+
+  test('/role show → command', () => {
+    const result = parseMessage('/role show');
+    expect(result.type).toBe('command');
+    expect(result.data.command).toBe('role show');
+  });
+
+  test('/passeio parque → command', () => {
+    const result = parseMessage('/passeio parque');
+    expect(result.type).toBe('command');
+    expect(result.data.command).toBe('passeio parque');
+  });
 });
 
 // ─── parseMessage — transações simples ───────────────────────────────────────
@@ -163,6 +205,12 @@ describe('parseMessage — transações simples', () => {
     const result = parseMessage('almoço 35,50');
     expect(result.type).toBe('transaction');
     expect(result.data.value).toBe(35.50);
+  });
+
+  test('sem tag → tripTag null', () => {
+    const result = parseMessage('uber 25');
+    expect(result.type).toBe('transaction');
+    expect(result.data.tripTag).toBeNull();
   });
 });
 
@@ -303,6 +351,83 @@ describe('parseMessage — mapeamentos do usuário', () => {
     const result = parseMessage('pet 80', userMappings);
     expect(result.type).toBe('transaction');
     expect(result.data.category).toBe('outros');
+  });
+});
+
+// ─── parseMessage — tag de viagem (#) ────────────────────────────────────────
+
+describe('parseMessage — tag de viagem', () => {
+  test('"almoço 35 #floripa" → extrai tripTag', () => {
+    const result = parseMessage('almoço 35 #floripa');
+    expect(result.type).toBe('transaction');
+    expect(result.data.tripTag).toBe('floripa');
+  });
+
+  test('"almoço 35 #floripa" → categoria alimentação preservada', () => {
+    const result = parseMessage('almoço 35 #floripa');
+    expect(result.type).toBe('transaction');
+    expect(result.data.category).toBe('alimentação');
+    expect(result.data.value).toBe(35);
+  });
+
+  test('"uber 25 #floripa" → categoria transporte + tag floripa', () => {
+    const result = parseMessage('uber 25 #floripa');
+    expect(result.type).toBe('transaction');
+    expect(result.data.category).toBe('transporte');
+    expect(result.data.tripTag).toBe('floripa');
+  });
+
+  test('tag no início da mensagem → funciona', () => {
+    const result = parseMessage('#floripa almoço 35');
+    expect(result.type).toBe('transaction');
+    expect(result.data.tripTag).toBe('floripa');
+    expect(result.data.value).toBe(35);
+  });
+
+  test('tag com acento → preserva', () => {
+    const result = parseMessage('almoço 35 #são paulo');
+    expect(result.type).toBe('transaction');
+    expect(result.data.tripTag).not.toBeNull();
+  });
+
+  test('"almoço 35 #floripa ontem" → tag + data ontem', () => {
+    const result = parseMessage('almoço 35 #floripa ontem');
+    expect(result.type).toBe('transaction');
+    expect(result.data.tripTag).toBe('floripa');
+    expect(sameDay(result.data.date, daysAgo(1))).toBe(true);
+  });
+
+  test('"mercado 150 #viagem dia 20" → tag + data passada', () => {
+    const result = parseMessage('mercado 150 #viagem dia 20');
+    expect(result.type).toBe('transaction');
+    expect(result.data.tripTag).toBe('viagem');
+    expect(result.data.date <= todayMidnight()).toBe(true);
+  });
+
+  test('tag não afeta o valor', () => {
+    const result = parseMessage('cinema 60 #aniversario');
+    expect(result.type).toBe('transaction');
+    expect(result.data.value).toBe(60);
+    expect(result.data.tripTag).toBe('aniversario');
+  });
+
+  test('tag não afeta categorização', () => {
+    const result = parseMessage('farmácia 45 #floripa');
+    expect(result.type).toBe('transaction');
+    expect(result.data.category).toBe('saúde');
+    expect(result.data.tripTag).toBe('floripa');
+  });
+
+  test('sem # → tripTag null', () => {
+    const result = parseMessage('almoço 35');
+    expect(result.type).toBe('transaction');
+    expect(result.data.tripTag).toBeNull();
+  });
+
+  test('tag não aparece na descrição final', () => {
+    const result = parseMessage('almoço 35 #floripa');
+    expect(result.type).toBe('transaction');
+    expect(result.data.description).not.toContain('#floripa');
   });
 });
 

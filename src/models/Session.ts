@@ -7,6 +7,7 @@ interface PendingTransaction {
   keyword?: string;
   date?: Date;
   originalMessage: string;
+  tripId?: string;
 }
 
 interface PendingSaving {
@@ -41,7 +42,14 @@ interface SessionContext {
     | 'delete_income'
     | 'delete_saving_choice'
     | 'delete_entry'
-    | 'delete_confirm';
+    | 'delete_confirm'
+    | 'editar_choice'
+    | 'editar_field'
+    | 'editar_description'
+    | 'editar_value_input'
+    | 'editar_viagem'
+    | 'planilha_mes'
+    | 'evolucao_choice';
   categoryOptions?: string[];
   newCategoryKeyword?: string;
   lastTransactionId?: mongoose.Types.ObjectId;
@@ -51,6 +59,9 @@ interface SessionContext {
   deleteOptions?: string[];
   deleteTargetId?: string;
   deleteTargetType?: 'transaction' | 'income' | 'saving_entry';
+  editarOptions?: string[];
+  editarViagemOptions?: string[];
+  planilhaOptions?: { label: string; year: number; month: number }[];
 }
 
 export interface ISession extends Document {
@@ -76,6 +87,13 @@ export interface ISession extends Document {
     | 'pending_delete_saving_choice'
     | 'pending_delete_entry'
     | 'pending_delete_confirm'
+    | 'pending_editar_choice'
+    | 'pending_editar_field'
+    | 'pending_editar_description'
+    | 'pending_editar_value_input'
+    | 'pending_editar_viagem'
+    | 'pending_planilha_mes'
+    | 'pending_evolucao_choice'
     | 'active';
   context: SessionContext;
   expiresAt: Date;
@@ -107,6 +125,13 @@ const sessionSchema = new Schema<ISession>({
       'pending_delete_saving_choice',
       'pending_delete_entry',
       'pending_delete_confirm',
+      'pending_editar_choice',
+      'pending_editar_field',
+      'pending_editar_description',
+      'pending_editar_value_input',
+      'pending_editar_viagem',
+      'pending_planilha_mes',
+      'pending_evolucao_choice',
       'active'
     ],
     default: 'active'
@@ -118,7 +143,8 @@ const sessionSchema = new Schema<ISession>({
       category: String,
       keyword: String,
       date: Date,
-      originalMessage: String
+      originalMessage: String,
+      tripId: String
     },
     pendingSaving: {
       savingId: String,
@@ -137,7 +163,9 @@ const sessionSchema = new Schema<ISession>({
         'saving_rate', 'saving_rate_type', 'saving_rate_value',
         'saving_deposit', 'saving_withdrawal', 'saving_rename',
         'delete_type', 'delete_transaction', 'delete_income',
-        'delete_saving_choice', 'delete_entry', 'delete_confirm'
+        'delete_saving_choice', 'delete_entry', 'delete_confirm',
+        'editar_choice', 'editar_field', 'editar_description', 'editar_value_input',
+        'editar_viagem', 'planilha_mes', 'evolucao_choice'
       ]
     },
     categoryOptions: [String],
@@ -148,7 +176,10 @@ const sessionSchema = new Schema<ISession>({
     mesOptions: [{ label: String, year: Number, month: Number }],
     deleteOptions: [String],
     deleteTargetId: String,
-    deleteTargetType: String
+    deleteTargetType: String,
+    editarOptions: [String],
+    editarViagemOptions: [String],
+    planilhaOptions: [{ label: String, year: Number, month: Number }]
   },
   expiresAt: { type: Date, required: true, index: true },
   createdAt: { type: Date, default: Date.now }

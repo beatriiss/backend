@@ -10,6 +10,7 @@ import CreditCardInstallment from '../models/CreditCardInstallment.js';
 import Session from '../models/Session.js';
 import InvestmentSummary from '../models/InvestimentSummary.js';
 import InvestmentTransaction from '../models/InvestimentTransaction.js';
+import Trip from '../models/Trip.js';
 
 export async function connectDatabase() {
   try {
@@ -37,6 +38,7 @@ async function syncIndexes() {
       { name: 'CreditCardInstallment', model: CreditCardInstallment },
       { name: 'InvestmentSummary', model: InvestmentSummary },
       { name: 'InvestmentTransaction', model: InvestmentTransaction },
+      { name: 'Trip', model: Trip },
       { name: 'Session', model: Session },
     ];
 

@@ -184,25 +184,34 @@ function normalizeWord(w: string): string {
 }
 
 function parseIntent(text: string, userMappings?: Record<string, string>): ParsedMessage {
-  // 1. Extrai data
-  const { date, cleanText } = parseDate(text);
+  // 1. Extrai tag de viagem (#floripa)
+  let tripTag: string | null = null;
+  let textSemTag = text;
+  const tagMatch = text.match(/#([a-zA-ZÀ-ÿ\w]+)/);
+  if (tagMatch) {
+    tripTag = tagMatch[1].toLowerCase();
+    textSemTag = text.replace(tagMatch[0], ' ').replace(/\s{2,}/g, ' ').trim();
+  }
 
-  // 2. Detecta tipo pela primeira palavra (verbo)
+  // 2. Extrai data
+  const { date, cleanText } = parseDate(textSemTag);
+
+  // 3. Detecta tipo pela primeira palavra (verbo)
   const firstWord = normalizeWord(cleanText.split(/\s+/)[0] || '');
   const isIncome = INCOME_VERBS.has(firstWord);
   const isSaving = SAVING_VERBS.has(firstWord);
   const isWithdrawal = WITHDRAWAL_VERBS.has(firstWord);
 
-  // 3. Procura valor
+  // 4. Procura valor
   const valueMatch = cleanText.match(/\d+([.,]\d{1,2})?/);
   if (!valueMatch) return { type: 'unknown' };
 
   const value = parseFloat(valueMatch[0].replace(',', '.'));
 
-  // 4. Remove valor do texto
+  // 5. Remove valor do texto
   const textWithoutValue = cleanText.replace(valueMatch[0], '').trim();
 
-  // 5. Filtra palavras — remove todos os verbos conhecidos e noise words
+  // 6. Filtra palavras
   const allVerbs = new Set([...EXPENSE_VERBS, ...INCOME_VERBS, ...SAVING_VERBS, ...WITHDRAWAL_VERBS]);
   const words = textWithoutValue
     .split(/\s+/)
@@ -253,7 +262,7 @@ function parseIntent(text: string, userMappings?: Record<string, string>): Parse
     };
   }
 
-  // ── Gasto (verbo de gasto ou sem verbo) ─────────────────────────────────────
+  // ── Gasto ────────────────────────────────────────────────────────────────────
   const description = words.join(' ') || textWithoutValue || 'gasto';
 
   let category: string | null = null;
@@ -281,7 +290,8 @@ function parseIntent(text: string, userMappings?: Record<string, string>): Parse
       description,
       category,
       date,
-      needsCategory: false
+      needsCategory: false,
+      tripTag  // null se não tiver tag
     }
   };
 }

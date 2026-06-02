@@ -54,26 +54,28 @@ export async function handleNameRegistration(
       const welcomeMsg =
         `🗸 Prazer, ${trimmedName}!\n\n` +
         `🤖 Agora você pode registrar seus gastos.\n\n` +
-        `📝 *Como usar:*\n` +
-        `Digite: [descrição] [valor]\n\n` +
-        `Exemplos:\n` +
-        `- Almoço 35\n` +
-        `- Uber 15.50\n` +
-        `- Recebi 6000 salário\n` +
-        `- Guardei 500 caixinha viagem\n\n` +
-        `📊 *Comandos:*\n` +
+        `📝 *Como registrar:*\n` +
+        `• Gasto: "almoço 35"\n` +
+        `• Com data: "uber 25 ontem"\n` +
+        `• Entrada: "recebi 6000 salário"\n` +
+        `• Guardado: "guardei 500 caixinha viagem"\n` +
+        `• Retirada: "tirei 200 caixinha viagem"\n` +
+        `• Viagem: "almoço 35 #floripa"\n\n` +
+        `📊 *Comandos principais:*\n` +
         `/hoje - Resumo do dia\n` +
-        `/resumo - Resumo do mês\n` +
+        `/saldo - Saldo do mês + semanas\n` +
+        `/resumo - Resumo por categoria\n` +
+        `/editar - Editar qualquer gasto\n` +
+        `/viagem [nome] - Criar/ver viagem\n` +
+        `/viagens - Listar viagens ativas\n` +
         `/guardados - Seus guardados\n` +
         `/ajuda - Ver todos os comandos\n\n` +
         `💡 Enviando o manual completo...`;
 
       await sendMessage(from, welcomeMsg);
 
-      // Limpa sessão antes de enviar o manual
       await clearSession(phoneNumber);
 
-      // Envia o manual em PDF
       try {
         await sendDocument(from, MANUAL_PATH, 'Manual do Bot de Financas.pdf');
       } catch (err) {

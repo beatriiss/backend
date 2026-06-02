@@ -1,6 +1,5 @@
 import mongoose, { Schema, Document, Model } from 'mongoose';
 
-// Interface do documento
 export interface ITransaction extends Document {
   userId: mongoose.Types.ObjectId;
   value: number;
@@ -11,10 +10,10 @@ export interface ITransaction extends Document {
   month?: number;
   year?: number;
   yearMonth?: string;
+  tripId?: mongoose.Types.ObjectId;
   createdAt: Date;
 }
 
-// Schema
 const transactionSchema = new Schema<ITransaction>({
   userId: {
     type: Schema.Types.ObjectId,
@@ -54,17 +53,22 @@ const transactionSchema = new Schema<ITransaction>({
     type: String,
     index: true
   },
+  tripId: {
+    type: Schema.Types.ObjectId,
+    ref: 'Trip',
+    default: null,
+    index: true
+  },
   createdAt: {
     type: Date,
     default: Date.now
   }
 });
 
-// Índices compostos
 transactionSchema.index({ userId: 1, yearMonth: 1 });
 transactionSchema.index({ userId: 1, date: -1 });
+transactionSchema.index({ userId: 1, tripId: 1 });
 
-// Middleware com tipagem correta
 transactionSchema.pre<ITransaction>('save', function(next) {
   if (this.date) {
     this.month = this.date.getMonth() + 1;
@@ -74,7 +78,6 @@ transactionSchema.pre<ITransaction>('save', function(next) {
   next();
 });
 
-// Export do model
 const Transaction: Model<ITransaction> = mongoose.model<ITransaction>('Transaction', transactionSchema);
 
 export default Transaction;
